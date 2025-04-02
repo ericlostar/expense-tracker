@@ -1,7 +1,7 @@
+import streamlit as st
 import pandas as pd
 import datetime
 
-# 基础分类关键词
 categories = {
     'Medical': ['doctor', 'hospital', 'medicine', 'pharmacy'],
     'Education': ['school', 'tuition', 'bookstore', 'university'],
@@ -11,7 +11,6 @@ categories = {
     'Personal': ['restaurant', 'movie', 'shopping', 'amazon']
 }
 
-# 自动分类函数
 def categorize_expense(description):
     description = description.lower()
     for category, keywords in categories.items():
@@ -20,46 +19,57 @@ def categorize_expense(description):
                 return category
     return 'Other'
 
-# 创建空DataFrame来存放消费记录
-columns = ['Date', 'Merchant', 'Description', 'Amount', 'Category', 'Entered By']
-expenses_df = pd.DataFrame(columns=columns)
+if 'expenses' not in st.session_state:
+    st.session_state.expenses = pd.DataFrame(columns=['Date', 'Merchant', 'Description', 'Amount', 'Category', 'Entered By'])
 
-# 手动添加消费记录
-def add_expense(date, merchant, description, amount, entered_by):
-    category = categorize_expense(description)
-    global expenses_df
-    expenses_df = pd.concat([expenses_df, pd.DataFrame([{
-        'Date': date,
-        'Merchant': merchant,
-        'Description': description,
-        'Amount': amount,
-        'Category': category,
-        'Entered By': entered_by
-    }])], ignore_index=True)
+st.title("💰 Daily Expense Tracker")
 
-# 从CSV导入消费记录
-def import_expenses_from_csv(csv_file, entered_by):
-    global expenses_df
-    imported_df = pd.read_csv(csv_file)
+with st.form("manual_entry"):
+    st.header("Add Expense Manually")
+    date = st.date_input("Date", datetime.date.today())
+    merchant = st.text_input("Merchant")
+    description = st.text_input("Description")
+    amount = st.number_input("Amount", min_value=0.01, step=0.01)
+    entered_by = st.text_input("Entered By")
+    submitted = st.form_submit_button("Add Expense")
+    
+    if submitted:
+        new_expense = {
+            'Date': date, 
+            'Merchant': merchant,
+            'Description': description,
+            'Amount': amount,
+            'Category': categorize_expense(description),
+            'Entered By': entered_by
+        }
+        st.session_state.expenses = pd.concat([st.session_state.expenses, pd.DataFrame([new_expense])], ignore_index=True)
+        st.success("Expense added successfully!")
+
+st.header("Bulk Import from CSV")
+uploaded_file = st.file_uploader("Choose a CSV file", type='csv')
+
+if uploaded_file is not None:
+    imported_df = pd.read_csv(uploaded_file)
     imported_df['Category'] = imported_df['Description'].apply(categorize_expense)
-    imported_df['Entered By'] = entered_by
-    expenses_df = pd.concat([expenses_df, imported_df[columns]], ignore_index=True)
+    entered_by_bulk = st.text_input("Entered By (Bulk Import)", "Bulk User")
+    imported_df['Entered By'] = entered_by_bulk
+    
+    if st.button("Import Expenses"):
+        st.session_state.expenses = pd.concat([st.session_state.expenses, imported_df], ignore_index=True)
+        st.success("CSV data imported successfully!")
 
-# 导出分类后的消费记录
+st.header("Expenses")
+st.dataframe(st.session_state.expenses)
 
-def export_expenses_to_csv(filename=None):
-    global expenses_df
-    if filename is None:
-        filename = f'expenses_{datetime.datetime.now().strftime("%Y%m%d")}.csv'
-    expenses_df.to_csv(filename, index=False)
-    print(f'Expenses exported to {filename}')
+def convert_df(df):
+    return df.to_csv(index=False).encode('utf-8')
 
-# 示例用法
-add_expense('2025-04-01', 'Walgreens', 'Medicine prescription', 20.50, 'Alice')
-add_expense('2025-04-02', 'Uber', 'Ride to office', 15.00, 'Bob')
+csv = convert_df(st.session_state.expenses)
 
-# 从CSV导入示例（CSV文件需包含Date,Merchant,Description,Amount四列）
-# import_expenses_from_csv('expenses_input.csv', 'Charlie')
+st.download_button(
+    label="Download Expenses as CSV",
+    data=csv,
+    file_name=f'expenses_{datetime.datetime.now().strftime('%Y%m%d')}.csv',
+    mime='text/csv',
+)
 
-# 导出数据
-export_expenses_to_csv()
